@@ -1,0 +1,19 @@
+﻿層級,技術,版本,用途,選擇理由
+後端框架,Flask,3.0+,Webhook 伺服器,輕量、適合小型 API
+對話 AI,OpenAI GPT-3.5/4,3.5-turbo / 4,主對話引擎,理解力強、生成自然
+意圖分類,BERT (bert-base-chinese),bert-base-chinese,興趣偵測（自己訓練）,中文支援佳、效能好
+深度學習框架,PyTorch,2.0+,模型訓練,生態系完整
+NLP 工具,Hugging Face Transformers,4.35+,BERT 訓練與推論,Hugging Face 官方
+訊息平台,Line Bot SDK,3.5+,Line 整合,官方 SDK
+資料庫（開發）,SQLite,-,使用者狀態,開發方便
+資料庫（生產）,PostgreSQL,-,使用者狀態,穩定、適合生產
+資料處理,Pandas,2.0+,CSV 處理,標準工具
+ORM,SQLAlchemy,2.0+,資料庫操作,Python 主流 ORM
+環境變數,python-dotenv,1.0+,設定管理,安全管理密鑰
+HTTP 請求,requests,2.31+,API 呼叫,標準庫
+排程任務,APScheduler,3.10+,定時提醒,背景任務執行
+資料視覺化,"Matplotlib, Seaborn",-,混淆矩陣繪製,評估報告用
+模型評估,scikit-learn,1.3+,F1 Score、混淆矩陣,標準評估工具
+容器化,Docker,24+,部署打包,環境一致性
+雲端平台,Google Cloud Run,-,生產部署,免費額度、自動擴展
+版本控制,Git + GitHub,-,程式碼管理,業界標準

@@ -1,0 +1,9 @@
+﻿項目,內容
+專案名稱,以 Line 及 ChatGPT 實現 QA 問答機器人：動物園環境教育顧問
+專案類型,混合架構（ChatGPT API + 自訓練 BERT 意圖分類器）
+技術方案,雙模型架構：BERT（意圖分類）+ GPT-3.5（對話引擎）
+主要技術,Flask、Line Bot SDK、OpenAI API、PyTorch、Transformers
+預期完成時間,3 週
+預期效益 1,提升動物園環境教育課程參與率 30%
+預期效益 2,減少客服人力成本 50%
+預期效益 3,提供 24/7 即時諮詢服務

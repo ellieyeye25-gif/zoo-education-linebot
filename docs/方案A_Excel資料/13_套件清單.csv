@@ -1,0 +1,19 @@
+﻿類別,套件名稱,版本,用途
+後端框架,Flask,3.0.0,Web 框架
+後端框架,gunicorn,21.2.0,生產伺服器
+Line Bot,line-bot-sdk,3.5.0,Line 整合
+OpenAI,openai,1.3.0,ChatGPT API
+深度學習,torch,2.1.0,PyTorch
+深度學習,transformers,4.35.0,BERT
+資料處理,pandas,2.1.0,資料處理
+資料處理,numpy,1.24.0,NumPy
+資料庫,SQLAlchemy,2.0.22,ORM
+資料庫,psycopg2-binary,2.9.9,PostgreSQL
+排程,APScheduler,3.10.4,定時任務
+HTTP,requests,2.31.0,HTTP 請求
+環境變數,python-dotenv,1.0.0,環境變數
+視覺化,matplotlib,3.8.0,繪圖
+視覺化,seaborn,0.13.0,統計圖表
+機器學習,scikit-learn,1.3.0,評估指標
+其他,jieba,0.42.1,中文分詞
+其他,python-dateutil,2.8.2,日期處理

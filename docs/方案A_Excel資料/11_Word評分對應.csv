@@ -1,0 +1,14 @@
+﻿評分項目,內容
+1. 介紹 - 目的,輸入：文字訊息；模型功能：意圖分類 + 對話生成 + 提醒；輸出：自然語言回覆 + 主動推播；效益：提升參與率 30%、降低成本 50%
+2. 數據集說明,來源：GPT-4 生成 + 人工標註 + 動物園官網；型態：CSV、JSON、文字
+3. 資料前處理,去重複、過濾異常長度、統一標點、分詞、類別平衡、劃分資料集
+4. 特徵工程,BERT CLS embedding (768維) + 關鍵字 TF-IDF 特徵 + 訊息長度特徵
+5. 模型設計,BERT Encoder (12層 Transformer) + Pooler + Dropout + Linear 分類層
+6. 模型訓練 - 輸入,"Tokenized text (input_ids, attention_mask)"
+7. 模型訓練 - Loss,CrossEntropyLoss（多分類標準損失函數）
+8. 模型訓練 - Activation,GELU（BERT 內建）、Softmax（輸出層）
+9. 模型訓練 - 參數調整,Learning rate 2e-5、Weight decay 0.01、Batch size 16、Epochs 5、Dropout 0.3
+10. 模型訓練 - 輸出,Logits → Softmax → 3 類機率分布
+11. 模型優劣勢,BERT：快速、本地推論、可解釋；GPT：理解力強、通用性高
+12. 環境與運行時間,Python 3.9、PyTorch 2.0、推論 50-100ms
+13. 效能衡量指標,準確率 90%、精確率 88.76%、召回率 89.90%、F1 Score 0.89、混淆矩陣

@@ -1,0 +1,13 @@
+﻿參數名稱,值,說明,調參理由
+Base Model,bert-base-chinese,BERT 預訓練模型,中文支援最佳
+Max Length,128,最大序列長度,使用者訊息通常 < 50 字
+Batch Size,16,每批次樣本數,平衡速度與記憶體
+Learning Rate,2e-5,學習率,BERT Fine-tune 標準值
+Epochs,5,訓練輪數,避免過擬合
+Optimizer,AdamW,優化器,BERT 官方推薦
+Weight Decay,0.01,權重衰減,正則化防止過擬合
+Warmup Steps,100,學習率預熱步數,穩定訓練初期
+Dropout,0.3,Dropout 比率,防止過擬合
+Loss Function,CrossEntropyLoss,損失函數,多分類標準損失
+Activation,GELU,激活函數,BERT 內建激活函數
+Num Labels,3,分類類別數,高/中/低興趣
