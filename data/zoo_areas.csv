@@ -1,0 +1,89 @@
+id,category,name,coordinates,url
+1,戶外區,臺灣動物區,MULTIPOINT ((121.5805931 24.9985962)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=A28758B750F6384F
+,,,,
+,,,,
+,,,,
+,,,,
+2,戶外區,兒童動物區,MULTIPOINT ((121.5819383 24.9989718)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=6F9CDDCD0BDE957D
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+3,戶外區,熱帶雨林區,MULTIPOINT ((121.5834188 24.9950215)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=34EC5D80A78F1AE7
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+4,戶外區,沙漠動物區,MULTIPOINT ((121.5851489 24.9952621)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=EB346856E308465A
+,,,,
+,,,,
+,,,,
+,,,,
+5,戶外區,澳洲動物區,MULTIPOINT ((121.5853326 24.994184)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=8F313251EBEF0C10
+,,,,
+,,,,
+,,,,
+,,,,
+6,戶外區,非洲動物區,MULTIPOINT ((121.5880094 24.9951333)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=1C4D21619F5005DE
+7,戶外區,溫帶動物區,MULTIPOINT ((121.5896013 24.9931447)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=B1EC1448C1745330
+,,,,
+,,,,
+,,,,
+,,,,
+8,戶外區,鳥園區,MULTIPOINT ((121.5888946 24.9957179)),https://www.zoo.gov.taipei/News_Content.aspx?n=27AD3418659070A4&sms=589C9E9F5E8CEAE4&s=1DA5145322B0A53E
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+9,教育館區,教育中心,MULTIPOINT ((121.5818524 24.9978621)),https://www.zoo.gov.taipei/News_Content.aspx?n=A68317C56FC00CF7&sms=397FD6A88BDEB1EC&s=64BCD01F16472515
+,,,,
+,,,,
+,,,,
+,,,,
+10,室內區,企鵝館,MULTIPOINT ((121.5911959 24.9929758)),https://www.zoo.gov.taipei/News_Content.aspx?n=0E2F1BDD15CF608D&sms=4B48AE9F06DCAA6F&s=C9EA207421B50C89
+,,,,
+,,,,
+,,,,
+,,,,
+11,室內區,無尾熊館,MULTIPOINT ((121.5828744 24.9982291)),https://www.zoo.gov.taipei/News_Content.aspx?n=0E2F1BDD15CF608D&sms=4B48AE9F06DCAA6F&s=2C22C2EA29247C93
+,,,,
+,,,,
+,,,,
+,,,,
+12,室內區,兩棲爬蟲動物館,MULTIPOINT ((121.5898494 24.9940697)),https://www.zoo.gov.taipei/News_Content.aspx?n=0E2F1BDD15CF608D&sms=4B48AE9F06DCAA6F&s=54A5A827FE843BD5
+,,,,
+,,,,
+13,室內區,昆蟲館,MULTIPOINT ((121.5807004 24.9967402)),https://www.zoo.gov.taipei/News_Content.aspx?n=0E2F1BDD15CF608D&sms=4B48AE9F06DCAA6F&s=FD31DA7EA875EF4D
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+,,,,
+14,室內區,新光特展館（大貓熊館）,MULTIPOINT ((121.5830956 24.9968265)),https://www.zoo.gov.taipei/News_Content.aspx?n=0E2F1BDD15CF608D&sms=4B48AE9F06DCAA6F&s=C1F6C579F136D58F
+,,,,
+,,,,
+15,室內區,熱帶雨林室內館（穿山甲館）,MULTIPOINT ((121.5828662 24.9967279)),https://www.zoo.gov.taipei/News_Content.aspx?n=0E2F1BDD15CF608D&sms=4B48AE9F06DCAA6F&s=A0E78E5E74C0C58A
+,,,,
+,,,,
+,,,,
+,,,,
+16,教育館區,酷Cool節能屋,MULTIPOINT ((121.5742216 24.9946471)),https://www.zoo.gov.taipei/News_Content.aspx?n=A68317C56FC00CF7&sms=397FD6A88BDEB1EC&s=611E924C9021F46F
+17,教育館區,頭廷魁文史館,"MULTIPOINT ((121.57446216057542,24.99491822384346))",https://www.zoo.gov.taipei/News_Content.aspx?n=A68317C56FC00CF7&sms=397FD6A88BDEB1EC&s=AB2245385A0A0036
