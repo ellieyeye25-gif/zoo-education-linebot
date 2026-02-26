@@ -47,7 +47,9 @@ class Config:
     # ============================================================
     # 資料路徑
     # ============================================================
-    COURSES_CSV_PATH = os.getenv("COURSES_CSV_PATH", "data/courses.csv")
+    COURSES_CSV_PATH = os.getenv("COURSES_CSV_PATH", "data/courses-February.csv")
+    ZOO_AREAS_CSV_PATH = os.getenv("ZOO_AREAS_CSV_PATH", "data/zoo_areas.csv")
+    ENV_EDU_NOTES_PATH = os.getenv("ENV_EDU_NOTES_PATH", "data/環教時數說明.txt")
     ZOO_AREAS_JSON_PATH = os.getenv("ZOO_AREAS_JSON_PATH", "data/zoo_areas.json")
     FACILITIES_JSON_PATH = os.getenv("FACILITIES_JSON_PATH", "data/facilities.json")
     

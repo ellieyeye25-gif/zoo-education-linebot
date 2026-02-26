@@ -12,6 +12,9 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from dotenv import load_dotenv
 
+from config.settings import config
+from services.chatgpt_service import get_reply_and_interest
+
 # 載入環境變數
 load_dotenv()
 
@@ -72,20 +75,18 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
-    """處理文字訊息"""
+    """處理文字訊息：用 ChatGPT 依課程／館區／環教說明回覆，並解析興趣度"""
     user_message = event.message.text.strip()
     user_id = event.source.user_id
-    
-    app.logger.info(f"收到訊息 from {user_id}: {user_message}")
-    
-    # TODO: 整合 BERT 意圖分類器
-    # TODO: 整合 ChatGPT 服務
-    # TODO: 整合提醒機制
-    
-    # 暫時的簡單回覆
-    reply_text = f"您好！我是動物園環境教育小幫手 🐼\n\n您說：「{user_message}」\n\n目前系統正在開發中，敬請期待！"
-    
-    # 回覆訊息
+
+    if not user_message:
+        reply_text = "您好！我是動物園環境教育小幫手 🐼\n請輸入想問的內容，例如課程、館區或環境教育時數。"
+    else:
+        app.logger.info(f"收到訊息 from {user_id}: {user_message}")
+        reply_text, interest = get_reply_and_interest(user_message, config)
+        if interest:
+            app.logger.info(f"興趣度: {interest}")
+
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply_text)
