@@ -148,9 +148,9 @@ def get_reply_and_interest(user_message, config):
     temperature = getattr(config, "GPT_TEMPERATURE", 0.7)
 
     try:
-        import openai
-        openai.api_key = api_key
-        resp = openai.ChatCompletion.create(
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -159,7 +159,7 @@ def get_reply_and_interest(user_message, config):
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        reply = (resp.choices or [{}])[0].get("message", {}).get("content", "") or ""
+        reply = (resp.choices[0].message.content or "").strip() if resp.choices else ""
     except Exception as e:
         return f"回覆時發生錯誤，請稍後再試。（{str(e)[:80]}）", None
 
