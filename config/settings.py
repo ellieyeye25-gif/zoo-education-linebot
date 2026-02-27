@@ -24,7 +24,7 @@ class Config:
     # ============================================================
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-    GPT_MAX_TOKENS = int(os.getenv("GPT_MAX_TOKENS", "800"))
+    GPT_MAX_TOKENS = int(os.getenv("GPT_MAX_TOKENS", "1200"))
     GPT_TEMPERATURE = float(os.getenv("GPT_TEMPERATURE", "0.7"))
     
     # ============================================================

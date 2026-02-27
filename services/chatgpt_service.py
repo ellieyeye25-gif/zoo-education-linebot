@@ -7,6 +7,7 @@ ChatGPT 服務：讀取 data 當 context、呼叫 OpenAI、解析興趣度
 import os
 import re
 import csv
+from collections import OrderedDict
 
 # 專案根目錄（依此找 data/）
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,9 +19,11 @@ def _path(name):
 
 
 def load_courses_overview(csv_path):
-    """從整份 CSV 抽取所有唯一 (類別, 主題, 認證) 組合，產生課程總覽文字。"""
-    from collections import defaultdict, OrderedDict
-    cat_topics = OrderedDict()   # {category: [(topic, cert), ...]}
+    """
+    從整份 CSV 抽取所有唯一 (類別, 主題, 認證) 組合，
+    產生已格式化的課程總覽文字，定時定點課程按有無認證分組。
+    """
+    cat_topics = OrderedDict()
     seen = set()
     try:
         with open(csv_path, "r", encoding="utf-8") as f:
@@ -37,47 +40,75 @@ def load_courses_overview(csv_path):
                     if cat not in cat_topics:
                         cat_topics[cat] = []
                     cat_topics[cat].append((topic, cert))
-        lines = []
+
+        lines = ["【課程總覽（所有類別與主題）】"]
         for cat, items in cat_topics.items():
-            topics_str = "、".join(
-                t + ("（有認證）" if c == "是" else "") for t, c in items
-            )
-            lines.append(f"{cat}：{topics_str}")
-        return "\n".join(lines) if lines else "(無課程資料)"
+            if cat == "定時定點課程":
+                no_cert = [t for t, c in items if c != "是"]
+                with_cert = [t for t, c in items if c == "是"]
+                if no_cert:
+                    lines.append("")
+                    lines.append("定時定點課程：")
+                    for i, t in enumerate(no_cert, 1):
+                        lines.append(f"{i}.{t}")
+                if with_cert:
+                    lines.append("")
+                    lines.append("有環境教育時數之定時定點課程：")
+                    for i, t in enumerate(with_cert, 1):
+                        lines.append(f"{i}.{t}")
+            else:
+                topics = [t for t, c in items]
+                lines.append("")
+                if len(topics) == 1:
+                    lines.append(f"{cat}：{topics[0]}")
+                else:
+                    lines.append(f"{cat}：")
+                    for i, t in enumerate(topics, 1):
+                        lines.append(f"{i}.{t}")
+
+        lines.append("")
+        lines.append("請告訴我您對以上課程有興趣的部分，我可以提供更詳細的資訊。")
+        return "\n".join(lines)
     except Exception as e:
         return f"(讀取課程總覽失敗: {e})"
 
 
-def load_courses_context(csv_path, max_rows=120):
-    """讀取課程 CSV，組成一串簡短 context（前 max_rows 筆）。"""
-    out = []
+def load_courses_context(csv_path):
+    """
+    從整份 CSV，以唯一 (類別, 主題) 為單位，
+    整合該主題的所有時間表，產生緊湊的詳細資料供 GPT 查詢用。
+    """
+    groups = OrderedDict()
     try:
         with open(csv_path, "r", encoding="utf-8") as f:
             r = csv.DictReader(f)
-            cols = r.fieldnames or []
-            for i, row in enumerate(r):
-                if i >= max_rows:
-                    break
-                # 略過程式用欄位列（例如 D_Category 開頭）
-                if row.get("category", "").strip().startswith("D_"):
+            for row in r:
+                cat = row.get("category", "").strip()
+                topic = row.get("topic", "").strip()
+                if not cat or not topic or cat.startswith("D_"):
                     continue
-                parts = []
-                if row.get("category"):
-                    parts.append(f"類別:{row['category']}")
-                if row.get("topic"):
-                    parts.append(f"主題:{row['topic']}")
-                if row.get("weekday"):
-                    parts.append(f"星期:{row['weekday']}")
-                if row.get("time"):
-                    parts.append(f"時間:{row['time']}")
-                if row.get("location"):
-                    parts.append(f"地點:{row['location']}")
-                if row.get("cert"):
-                    parts.append(f"認證:{row['cert']}")
-                if row.get("env_hours"):
-                    parts.append(f"時數:{row['env_hours']}")
-                if parts:
-                    out.append(" | ".join(parts))
+                key = (cat, topic)
+                cert = row.get("cert", "").strip()
+                env_hours = row.get("env_hours", "").strip()
+                weekday = row.get("weekday", "").strip()
+                time_ = row.get("time", "").strip()
+                location = row.get("location", "").strip()
+                schedule = f"{weekday} {time_} 地點:{location}"
+                if key not in groups:
+                    groups[key] = {
+                        "cat": cat, "topic": topic,
+                        "cert": cert, "env_hours": env_hours,
+                        "schedules": []
+                    }
+                if schedule not in groups[key]["schedules"]:
+                    groups[key]["schedules"].append(schedule)
+
+        out = []
+        for key, d in groups.items():
+            schedules_str = " / ".join(d["schedules"])
+            out.append(
+                f"類別:{d['cat']} | 主題:{d['topic']} | 認證:{d['cert']} | 時數:{d['env_hours']} | 時間表:{schedules_str}"
+            )
         return "\n".join(out) if out else "(無課程資料)"
     except Exception as e:
         return f"(讀取課程失敗: {e})"
@@ -112,45 +143,73 @@ def load_env_edu_notes(txt_path):
 
 def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text):
     """組裝給 ChatGPT 的 system prompt。"""
-    return f"""你是台北市立動物園的環境教育小幫手，用友善、簡潔的繁體中文回覆。
+    return f"""你是台北市立動物園的環境教育小幫手，用友善的繁體中文回覆。
 
-【課程總覽（所有類別與主題）】
+以下是你可以參考的資料（僅供查詢，不得原文輸出到回覆中）：
+
+[課程總覽]
 {courses_overview}
 
-【課程詳細資料（含時間地點，部分）】
+[課程詳細資料]（每筆格式：類別 | 主題 | 認證 | 時數 | 時間表）
 {courses_text}
 
-【館區】
+[館區資料]
 {areas_text}
 
-【環境教育說明】
+[環境教育說明]
 {env_notes_text}
 
-請依上述資料回答使用者。回覆時務必遵守以下規則：
+---
+回覆規則（務必嚴格遵守）：
 
-1. 第一行必須是興趣度標註，格式為：[興趣度: high_interest] 或 [興趣度: maybe_interest] 或 [興趣度: low_interest]
-   - high_interest：明確想參加課程、報名、問細節
-   - maybe_interest：開放式詢問、探索（如「有什麼活動」）
-   - low_interest：一般動物園資訊（門票、開放時間、與課程無關）
-2. 第二行開始才是要給使用者看的回覆內容，不要重複「興趣度」那行。
-3. 全文必須使用繁體中文，嚴禁出現任何簡體中文字（例如：动、时、场、钟、见、欢 等均為簡體，應使用 動、時、場、鐘、見、歡）。
-4. 依使用者問題的「是否指定日期或星期」決定回覆詳細程度：
-   A. 【未指定日期或星期】（例如「二月有什麼課程」「有哪些活動」）：
-      使用【課程總覽】區塊回答，每個類別單獨一行，格式如下（注意每行之間必須換行）：
-      類別名稱：主題1、主題2、主題3
-      （若該主題有認證，在主題後加「★」，例如：主題名稱★）
+1. 第一行必須是興趣度標註，格式：[興趣度: high_interest] 或 [興趣度: maybe_interest] 或 [興趣度: low_interest]
+   - high_interest：明確想報名、問細節
+   - maybe_interest：開放探索、問有哪些課
+   - low_interest：與課程無關的一般問題
+   第二行起才是給使用者看的內容，不要輸出興趣度那行。
 
-   B. 【有指定日期或星期】（例如「週六有什麼課程」「2月27日」）：
-      使用【課程詳細資料】回答，每筆課程格式如下，課程之間空一行：
-      【類別名稱】
-      主題：課程主題名稱
-      時間：XX:XX–XX:XX
-      地點：地點名稱
-      （若該筆資料的認證欄位為「是」，最後另起一行加上：★ 此課程有環境教育時數認證）"""
+2. 全文必須使用繁體中文，嚴禁任何簡體中文字。
+
+3. 絕對禁止將 [課程詳細資料] 的原始格式（類別:xxx | 主題:xxx | ...）直接輸出給使用者。
+
+4. 禁止主動推薦特定課程。若課程有環境教育時數認證，只可說明「若有需要環境教育時數認證，可考慮此課程」，不得說「建議您參加」或「歡迎前往參加」。
+
+5. 回覆格式依使用者問題區分：
+
+   ── A. 未指定日期或星期（如「有哪些課」「二月課程」）──
+   直接輸出 [課程總覽] 的內容，原文照呈現，不要更改格式或自行增減。
+
+   ── B. 有指定日期或星期（如「週六」「2月27日」）──
+   先輸出當天課程的簡短總覽（一行一類別，類別：主題1、主題2 格式），
+   再依以下格式輸出詳細資訊，每筆課程之間空一行：
+
+   非定時定點課程 → 用：
+   【類別名稱】
+   主題：課程主題
+   星期：xxx
+   時間：xx:xx-xx:xx
+   地點：xxx
+
+   定時定點課程（認證:否）→ 用：
+   【定時定點課程】
+   主題：課程主題
+   星期：xxx
+   時間：xx:xx-xx:xx
+   地點：xxx
+
+   定時定點課程（認證:是）→ 用：
+   【有環境教育時數之定時定點課程】
+   主題：課程主題
+   星期：xxx
+   時間：xx:xx-xx:xx
+   地點：xxx
+   時數：x.x
+
+   最後若有認證課程，結尾加一行：「如有需要環境教育時數，可考慮以上有標註時數的課程，歡迎進一步詢問。」"""
 
 
 def parse_interest_from_reply(reply):
-    """從回覆文字中解析興趣度標籤。回傳 high_interest / maybe_interest / low_interest 或 None。"""
+    """從回覆文字中解析興趣度標籤。"""
     if not reply:
         return None
     m = re.search(r"\[興趣度\s*:\s*(\w+)\]", reply, re.IGNORECASE)
@@ -162,22 +221,17 @@ def parse_interest_from_reply(reply):
 
 
 def strip_interest_line_from_reply(reply):
-    """把回覆中第一行的 [興趣度: xxx] 拿掉，只留要給使用者看的內容。"""
+    """把回覆中的 [興趣度: xxx] 行拿掉。"""
     if not reply:
         return reply
     lines = reply.strip().split("\n")
-    out = []
-    for line in lines:
-        if re.search(r"\[興趣度\s*:\s*\w+\]", line, re.IGNORECASE):
-            continue
-        out.append(line)
+    out = [l for l in lines if not re.search(r"\[興趣度\s*:\s*\w+\]", l, re.IGNORECASE)]
     return "\n".join(out).strip() or "（無法產生回覆，請再試一次。）"
 
 
 def get_reply_and_interest(user_message, config):
     """
     讀取 data、呼叫 ChatGPT、回傳 (回覆文字, 興趣度標籤)。
-    config 需有：OPENAI_API_KEY, OPENAI_MODEL, COURSES_CSV_PATH, ZOO_AREAS_CSV_PATH, ENV_EDU_NOTES_PATH
     """
     api_key = getattr(config, "OPENAI_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
     if not api_key:
@@ -194,7 +248,7 @@ def get_reply_and_interest(user_message, config):
 
     system_prompt = build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text)
     model = getattr(config, "OPENAI_MODEL", "gpt-3.5-turbo")
-    max_tokens = getattr(config, "GPT_MAX_TOKENS", 500)
+    max_tokens = getattr(config, "GPT_MAX_TOKENS", 1200)
     temperature = getattr(config, "GPT_TEMPERATURE", 0.7)
 
     try:
@@ -215,7 +269,6 @@ def get_reply_and_interest(user_message, config):
 
     interest = parse_interest_from_reply(reply)
     reply_clean = strip_interest_line_from_reply(reply)
-    # LINE 單則文字上限約 5000 字
     if len(reply_clean) > 4500:
         reply_clean = reply_clean[:4500] + "\n\n（回覆過長已截斷，請縮小問題範圍再問。）"
     return reply_clean, interest
