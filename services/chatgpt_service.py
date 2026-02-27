@@ -8,14 +8,147 @@ import os
 import re
 import csv
 from collections import OrderedDict
+from datetime import datetime, timezone, timedelta
 
 # 專案根目錄（依此找 data/）
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TW_TZ = timezone(timedelta(hours=8))
+WEEKDAY_ZH = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
 
 
 def _path(name):
     """專案內 data 路徑"""
     return os.path.join(PROJECT_ROOT, name)
+
+
+def detect_query_weekday(message, now=None):
+    """
+    從使用者訊息偵測詢問的目標星期。
+    回傳中文星期字串（如「週四」）或 None（未指定特定日期）。
+    """
+    if now is None:
+        now = datetime.now(TW_TZ)
+    wd = now.weekday()  # 0=週一 … 6=週日
+
+    # 相對日期
+    relative = {
+        "今天": wd, "今日": wd,
+        "昨天": (wd - 1) % 7, "昨日": (wd - 1) % 7,
+        "明天": (wd + 1) % 7, "明日": (wd + 1) % 7,
+        "後天": (wd + 2) % 7,
+        "前天": (wd - 2) % 7,
+    }
+    for kw, idx in relative.items():
+        if kw in message:
+            return WEEKDAY_ZH[idx]
+
+    # 明確星期（週X / 星期X）
+    for i, zh in enumerate(WEEKDAY_ZH):
+        alt = zh.replace("週", "星期")
+        if zh in message or alt in message:
+            return zh
+
+    # 具體日期（如 2/26、2月26日、26號）→ 計算星期
+    m = re.search(r'(\d{1,2})[月/](\d{1,2})[日號]?', message)
+    if m:
+        try:
+            month, day = int(m.group(1)), int(m.group(2))
+            year = now.year
+            target = datetime(year, month, day, tzinfo=TW_TZ)
+            return WEEKDAY_ZH[target.weekday()]
+        except ValueError:
+            pass
+
+    return None
+
+
+def matches_weekday(weekday_field, target):
+    """
+    判斷課程 CSV 的 weekday 欄位是否涵蓋 target（如「週四」）。
+    支援格式：每週X、第N個週X、每週X至週Y、每週X、週Y（逗號/頓號列舉）
+    """
+    if not weekday_field or not target:
+        return False
+    if target in weekday_field:
+        return True
+    # 範圍：每週二至週六
+    m = re.search(r'週([一二三四五六日])至週([一二三四五六日])', weekday_field)
+    if m:
+        start = WEEKDAY_ZH.index("週" + m.group(1))
+        end = WEEKDAY_ZH.index("週" + m.group(2))
+        target_idx = WEEKDAY_ZH.index(target) if target in WEEKDAY_ZH else -1
+        if 0 <= start <= target_idx <= end:
+            return True
+    return False
+
+
+def load_courses_for_weekday(csv_path, target_weekday):
+    """
+    從整份 CSV 篩選包含 target_weekday 的課程，
+    回傳 (summary_text, detail_text)：
+      summary_text：一行一類別的簡短總覽
+      detail_text：已格式化的詳細課程區塊，可直接給 GPT 輸出
+    """
+    # 分類收集：{cat: [(topic, weekday, time, location, cert, hours), ...]}
+    buckets = OrderedDict()
+    try:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                cat = row.get("category", "").strip()
+                topic = row.get("topic", "").strip()
+                if not cat or not topic or cat.startswith("D_"):
+                    continue
+                if not matches_weekday(row.get("weekday", ""), target_weekday):
+                    continue
+                entry = (
+                    topic,
+                    row.get("weekday", "").strip(),
+                    row.get("time", "").strip(),
+                    row.get("location", "").strip(),
+                    row.get("cert", "").strip(),
+                    row.get("env_hours", "").strip(),
+                )
+                if cat not in buckets:
+                    buckets[cat] = []
+                buckets[cat].append(entry)
+    except Exception as e:
+        return f"(讀取失敗: {e})", ""
+
+    if not buckets:
+        return f"（{target_weekday} 無課程資料）", ""
+
+    # 摘要
+    summary_lines = []
+    for cat, entries in buckets.items():
+        seen_topics = list(dict.fromkeys(t for t, *_ in entries))
+        if cat == "定時定點課程":
+            no_cert = [t for t, *r in entries if r[3] != "是"]
+            with_cert = [t for t, *r in entries if r[3] == "是"]
+            no_cert_unique = list(dict.fromkeys(no_cert))
+            with_cert_unique = list(dict.fromkeys(with_cert))
+            if no_cert_unique:
+                summary_lines.append(f"定時定點課程：{'、'.join(no_cert_unique)}")
+            if with_cert_unique:
+                summary_lines.append(f"有環境教育時數之定時定點課程：{'、'.join(with_cert_unique)}")
+        else:
+            summary_lines.append(f"{cat}：{'、'.join(seen_topics)}")
+
+    # 詳細
+    detail_lines = []
+    for cat, entries in buckets.items():
+        for topic, weekday, time_, location, cert, hours in entries:
+            header = "【有環境教育時數之定時定點課程】" if (cat == "定時定點課程" and cert == "是") else f"【{cat}】"
+            block = [header, f"主題：{topic}", f"星期：{weekday}", f"時間：{time_}", f"地點：{location}"]
+            if cert == "是" and hours:
+                block.append(f"時數：{hours}")
+            detail_lines.append("\n".join(block))
+
+    has_cert = any(cert == "是" for entries in buckets.values() for _, _, _, _, cert, _ in entries)
+    if has_cert:
+        detail_lines.append("如有需要環境教育時數，可考慮以上有標註時數的課程，歡迎進一步詢問。")
+
+    return "\n".join(summary_lines), "\n\n".join(detail_lines)
 
 
 def load_courses_overview(csv_path):
@@ -141,18 +274,32 @@ def load_env_edu_notes(txt_path):
         return f"(讀取環教說明失敗: {e})"
 
 
-def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text, now_str=""):
+def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text,
+                        now_str="", day_summary="", day_detail="", target_weekday=""):
     """組裝給 ChatGPT 的 system prompt。"""
     time_section = f"\n[現在時間]\n{now_str}\n" if now_str else ""
+
+    # 當天課程已由 Python 預先篩選，直接放進 prompt
+    if day_detail:
+        day_section = f"""
+[已篩選課程：{target_weekday}]
+以下是 {target_weekday} 的課程，已完整篩選，直接照格式輸出即可：
+
+摘要：
+{day_summary}
+
+詳細：
+{day_detail}
+"""
+    else:
+        day_section = ""
+
     return f"""你是台北市立動物園的環境教育小幫手，用友善的繁體中文回覆。
-{time_section}
-以下是你可以參考的資料（僅供查詢，不得原文輸出到回覆中）：
+{time_section}{day_section}
+以下是補充參考資料（僅供查詢，不得原文輸出到回覆中）：
 
 [課程總覽]
 {courses_overview}
-
-[課程詳細資料]（每筆格式：類別 | 主題 | 認證 | 時數 | 時間表）
-{courses_text}
 
 [館區資料]
 {areas_text}
@@ -171,18 +318,20 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
 
 2. 全文必須使用繁體中文，嚴禁任何簡體中文字。
 
-3. 絕對禁止將 [課程詳細資料] 的原始格式（類別:xxx | 主題:xxx | ...）直接輸出給使用者。
+3. 禁止主動推薦特定課程。若課程有環境教育時數認證，只可說明「若有需要環境教育時數認證，可考慮此課程」。
 
-4. 禁止主動推薦特定課程。若課程有環境教育時數認證，只可說明「若有需要環境教育時數認證，可考慮此課程」，不得說「建議您參加」或「歡迎前往參加」。
-
-5. 回覆格式依使用者問題區分：
+4. 回覆格式依使用者問題區分：
 
    ── A. 未指定日期或星期（如「有哪些課」「二月課程」）──
    直接輸出 [課程總覽] 的內容，原文照呈現，不要更改格式或自行增減。
 
-   ── B. 有指定日期或星期（如「週六」「2月27日」「今天」「明天」「這週五」）──
-   請根據 [現在時間] 計算出使用者指定的確切日期與星期，
-   再從 [課程詳細資料] 的時間表中篩選出符合該星期的課程。
+   ── B. 有指定日期或星期，且 [已篩選課程] 存在 ──
+   先輸出「摘要」的內容，再空一行，輸出「詳細」的內容，原文照輸出，不要修改。
+
+   ── C. 有指定日期或星期，但無 [已篩選課程] ──
+   告知使用者查無該日的課程資料。
+
+   ── D. 使用者詢問特定課程細節 ──
    先輸出當天課程的簡短總覽（一行一類別，類別：主題1、主題2 格式），
    再依以下格式輸出詳細資訊，每筆課程之間空一行：
 
@@ -246,11 +395,20 @@ def get_reply_and_interest(user_message, config, now_str=""):
     notes_path = _path(getattr(config, "ENV_EDU_NOTES_PATH", "data/環教時數說明.txt"))
 
     courses_overview = load_courses_overview(courses_path)
-    courses_text = load_courses_context(courses_path)
     areas_text = load_zoo_areas_context(areas_path)
     env_notes_text = load_env_edu_notes(notes_path)
 
-    system_prompt = build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text, now_str)
+    # Python 預先偵測目標星期並篩選課程，避免讓 GPT 自行過濾
+    now_dt = datetime.now(TW_TZ)
+    target_weekday = detect_query_weekday(user_message, now_dt)
+    day_summary, day_detail = ("", "")
+    if target_weekday:
+        day_summary, day_detail = load_courses_for_weekday(courses_path, target_weekday)
+
+    system_prompt = build_system_prompt(
+        courses_overview, "", areas_text, env_notes_text,
+        now_str, day_summary, day_detail, target_weekday
+    )
     model = getattr(config, "OPENAI_MODEL", "gpt-3.5-turbo")
     max_tokens = getattr(config, "GPT_MAX_TOKENS", 1200)
     temperature = getattr(config, "GPT_TEMPERATURE", 0.7)
