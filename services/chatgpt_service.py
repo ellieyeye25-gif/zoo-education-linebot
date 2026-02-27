@@ -92,12 +92,18 @@ def build_system_prompt(courses_text, areas_text, env_notes_text):
 【環境教育說明】
 {env_notes_text}
 
-請依上述資料回答使用者。回覆時：
+請依上述資料回答使用者。回覆時務必遵守以下規則：
+
 1. 第一行必須是興趣度標註，格式為：[興趣度: high_interest] 或 [興趣度: maybe_interest] 或 [興趣度: low_interest]
    - high_interest：明確想參加課程、報名、問細節
    - maybe_interest：開放式詢問、探索（如「有什麼活動」）
    - low_interest：一般動物園資訊（門票、開放時間、與課程無關）
-2. 第二行開始才是要給使用者看的回覆內容，不要重複「興趣度」那行。"""
+2. 第二行開始才是要給使用者看的回覆內容，不要重複「興趣度」那行。
+3. 全文必須使用繁體中文，嚴禁出現任何簡體中文字（例如：动、时、场、钟、见、欢 等均為簡體，應使用 動、時、場、鐘、見、歡）。
+4. 列舉課程時，請使用數字序號（1. 2. 3.），並以「地點在〔地點名稱〕」取代 @，格式範例：
+   1. 【課程名稱】
+      時間：XX:XX–XX:XX
+      地點在〔地點名稱〕"""
 
 
 def parse_interest_from_reply(reply):
