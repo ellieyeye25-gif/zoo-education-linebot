@@ -17,6 +17,37 @@ def _path(name):
     return os.path.join(PROJECT_ROOT, name)
 
 
+def load_courses_overview(csv_path):
+    """從整份 CSV 抽取所有唯一 (類別, 主題, 認證) 組合，產生課程總覽文字。"""
+    from collections import defaultdict, OrderedDict
+    cat_topics = OrderedDict()   # {category: [(topic, cert), ...]}
+    seen = set()
+    try:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                cat = row.get("category", "").strip()
+                topic = row.get("topic", "").strip()
+                cert = row.get("cert", "").strip()
+                if not cat or not topic or cat.startswith("D_"):
+                    continue
+                key = (cat, topic)
+                if key not in seen:
+                    seen.add(key)
+                    if cat not in cat_topics:
+                        cat_topics[cat] = []
+                    cat_topics[cat].append((topic, cert))
+        lines = []
+        for cat, items in cat_topics.items():
+            topics_str = "、".join(
+                t + ("（有認證）" if c == "是" else "") for t, c in items
+            )
+            lines.append(f"{cat}：{topics_str}")
+        return "\n".join(lines) if lines else "(無課程資料)"
+    except Exception as e:
+        return f"(讀取課程總覽失敗: {e})"
+
+
 def load_courses_context(csv_path, max_rows=120):
     """讀取課程 CSV，組成一串簡短 context（前 max_rows 筆）。"""
     out = []
@@ -79,11 +110,14 @@ def load_env_edu_notes(txt_path):
         return f"(讀取環教說明失敗: {e})"
 
 
-def build_system_prompt(courses_text, areas_text, env_notes_text):
+def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text):
     """組裝給 ChatGPT 的 system prompt。"""
     return f"""你是台北市立動物園的環境教育小幫手，用友善、簡潔的繁體中文回覆。
 
-【課程資料（部分）】
+【課程總覽（所有類別與主題）】
+{courses_overview}
+
+【課程詳細資料（含時間地點，部分）】
 {courses_text}
 
 【館區】
@@ -102,16 +136,17 @@ def build_system_prompt(courses_text, areas_text, env_notes_text):
 3. 全文必須使用繁體中文，嚴禁出現任何簡體中文字（例如：动、时、场、钟、见、欢 等均為簡體，應使用 動、時、場、鐘、見、歡）。
 4. 依使用者問題的「是否指定日期或星期」決定回覆詳細程度：
    A. 【未指定日期或星期】（例如「二月有什麼課程」「有哪些活動」）：
-      只列出課程總覽，格式為「類別：主題1、主題2、主題3」，相同類別合併為一行，例如：
-      Keeper's Talk保母講古：無尾熊的繁殖及生存危機、大貓熊動物訓練、馬科迎新年-蒙古野馬
-      教育駐站：認識穿山甲
+      使用【課程總覽】區塊回答，每個類別單獨一行，格式如下（注意每行之間必須換行）：
+      類別名稱：主題1、主題2、主題3
+      （若該主題有認證，在主題後加「★」，例如：主題名稱★）
+
    B. 【有指定日期或星期】（例如「週六有什麼課程」「2月27日」）：
-      每筆課程使用以下格式，課程之間空一行：
+      使用【課程詳細資料】回答，每筆課程格式如下，課程之間空一行：
       【類別名稱】
       主題：課程主題名稱
       時間：XX:XX–XX:XX
       地點：地點名稱
-5. 若回覆中涉及的課程資料有「認證:是」，在該課程結尾加上「★ 此課程有環境教育時數認證」。"""
+      （若該筆資料的認證欄位為「是」，最後另起一行加上：★ 此課程有環境教育時數認證）"""
 
 
 def parse_interest_from_reply(reply):
@@ -152,11 +187,12 @@ def get_reply_and_interest(user_message, config):
     areas_path = _path(getattr(config, "ZOO_AREAS_CSV_PATH", "data/zoo_areas.csv"))
     notes_path = _path(getattr(config, "ENV_EDU_NOTES_PATH", "data/環教時數說明.txt"))
 
+    courses_overview = load_courses_overview(courses_path)
     courses_text = load_courses_context(courses_path)
     areas_text = load_zoo_areas_context(areas_path)
     env_notes_text = load_env_edu_notes(notes_path)
 
-    system_prompt = build_system_prompt(courses_text, areas_text, env_notes_text)
+    system_prompt = build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text)
     model = getattr(config, "OPENAI_MODEL", "gpt-3.5-turbo")
     max_tokens = getattr(config, "GPT_MAX_TOKENS", 500)
     temperature = getattr(config, "GPT_TEMPERATURE", 0.7)
