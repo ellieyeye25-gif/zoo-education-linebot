@@ -74,11 +74,14 @@ def matches_weekday(weekday_field, target):
     # 範圍：每週二至週六
     m = re.search(r'週([一二三四五六日])至週([一二三四五六日])', weekday_field)
     if m:
-        start = WEEKDAY_ZH.index("週" + m.group(1))
-        end = WEEKDAY_ZH.index("週" + m.group(2))
-        target_idx = WEEKDAY_ZH.index(target) if target in WEEKDAY_ZH else -1
-        if 0 <= start <= target_idx <= end:
-            return True
+        try:
+            start = WEEKDAY_ZH.index("週" + m.group(1))
+            end = WEEKDAY_ZH.index("週" + m.group(2))
+            target_idx = WEEKDAY_ZH.index(target) if target in WEEKDAY_ZH else -1
+            if 0 <= start <= target_idx <= end:
+                return True
+        except ValueError:
+            pass
     return False
 
 
@@ -291,6 +294,12 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
 詳細：
 {day_detail}
 """
+    elif target_weekday and day_summary and not day_summary.startswith("（"):
+        # 有讀取錯誤，退回讓 GPT 從課程總覽回答
+        day_section = f"\n[備註] 使用者詢問 {target_weekday} 的課程。\n"
+    elif target_weekday and day_summary.startswith("（"):
+        # 確認無課程
+        day_section = f"\n[備註] {day_summary}\n"
     else:
         day_section = ""
 
@@ -399,11 +408,17 @@ def get_reply_and_interest(user_message, config, now_str=""):
     env_notes_text = load_env_edu_notes(notes_path)
 
     # Python 預先偵測目標星期並篩選課程，避免讓 GPT 自行過濾
+    import logging
     now_dt = datetime.now(TW_TZ)
     target_weekday = detect_query_weekday(user_message, now_dt)
     day_summary, day_detail = ("", "")
     if target_weekday:
-        day_summary, day_detail = load_courses_for_weekday(courses_path, target_weekday)
+        try:
+            day_summary, day_detail = load_courses_for_weekday(courses_path, target_weekday)
+        except Exception as e:
+            logging.warning(f"load_courses_for_weekday 失敗: {e}")
+            day_summary, day_detail = ("", "")
+    logging.info(f"[weekday] target={target_weekday} | summary_len={len(day_summary)} | detail_len={len(day_detail)}")
 
     system_prompt = build_system_prompt(
         courses_overview, "", areas_text, env_notes_text,
