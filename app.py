@@ -6,6 +6,7 @@ Flask Webhook Server
 """
 
 import os
+from datetime import datetime, timezone, timedelta
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -73,6 +74,17 @@ def callback():
 # Line Bot 事件處理
 # ============================================================
 
+TW_TZ = timezone(timedelta(hours=8))
+WEEKDAY_ZH = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+
+
+def get_now_str():
+    """回傳台灣當前時間的中文字串，例如：2026年2月27日（週四）14:30"""
+    now = datetime.now(TW_TZ)
+    wd = WEEKDAY_ZH[now.weekday()]
+    return f"{now.year}年{now.month}月{now.day}日（{wd}）{now.strftime('%H:%M')}"
+
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     """處理文字訊息：用 ChatGPT 依課程／館區／環教說明回覆，並解析興趣度"""
@@ -82,8 +94,9 @@ def handle_text_message(event):
     if not user_message:
         reply_text = "您好！我是動物園環境教育小幫手 🐼\n請輸入想問的內容，例如課程、館區或環境教育時數。"
     else:
-        app.logger.info(f"收到訊息 from {user_id}: {user_message}")
-        reply_text, interest = get_reply_and_interest(user_message, config)
+        now_str = get_now_str()
+        app.logger.info(f"收到訊息 from {user_id}: {user_message}（{now_str}）")
+        reply_text, interest = get_reply_and_interest(user_message, config, now_str)
         if interest:
             app.logger.info(f"興趣度: {interest}")
 

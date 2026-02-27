@@ -141,10 +141,11 @@ def load_env_edu_notes(txt_path):
         return f"(讀取環教說明失敗: {e})"
 
 
-def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text):
+def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text, now_str=""):
     """組裝給 ChatGPT 的 system prompt。"""
+    time_section = f"\n[現在時間]\n{now_str}\n" if now_str else ""
     return f"""你是台北市立動物園的環境教育小幫手，用友善的繁體中文回覆。
-
+{time_section}
 以下是你可以參考的資料（僅供查詢，不得原文輸出到回覆中）：
 
 [課程總覽]
@@ -179,7 +180,9 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
    ── A. 未指定日期或星期（如「有哪些課」「二月課程」）──
    直接輸出 [課程總覽] 的內容，原文照呈現，不要更改格式或自行增減。
 
-   ── B. 有指定日期或星期（如「週六」「2月27日」）──
+   ── B. 有指定日期或星期（如「週六」「2月27日」「今天」「明天」「這週五」）──
+   請根據 [現在時間] 計算出使用者指定的確切日期與星期，
+   再從 [課程詳細資料] 的時間表中篩選出符合該星期的課程。
    先輸出當天課程的簡短總覽（一行一類別，類別：主題1、主題2 格式），
    再依以下格式輸出詳細資訊，每筆課程之間空一行：
 
@@ -229,9 +232,10 @@ def strip_interest_line_from_reply(reply):
     return "\n".join(out).strip() or "（無法產生回覆，請再試一次。）"
 
 
-def get_reply_and_interest(user_message, config):
+def get_reply_and_interest(user_message, config, now_str=""):
     """
     讀取 data、呼叫 ChatGPT、回傳 (回覆文字, 興趣度標籤)。
+    now_str：台灣當前時間字串，例如「2026年2月27日（週四）14:30」
     """
     api_key = getattr(config, "OPENAI_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
     if not api_key:
@@ -246,7 +250,7 @@ def get_reply_and_interest(user_message, config):
     areas_text = load_zoo_areas_context(areas_path)
     env_notes_text = load_env_edu_notes(notes_path)
 
-    system_prompt = build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text)
+    system_prompt = build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text, now_str)
     model = getattr(config, "OPENAI_MODEL", "gpt-3.5-turbo")
     max_tokens = getattr(config, "GPT_MAX_TOKENS", 1200)
     temperature = getattr(config, "GPT_TEMPERATURE", 0.7)
