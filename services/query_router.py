@@ -490,12 +490,21 @@ def route_message(message, config, now_str="", now_dt=None):
     # ── 3. 課程日期查詢（Python 直接篩選回應） ────────────────────
     target_weekday = detect_query_weekday(message, now_dt)
     if target_weekday:
-        # 先確認查詢日期是否在課表有效範圍內
+        # 檢查一：明確日期或相對日期（今天/明天…）超出課表範圍
         out_of_range, out_month = _check_course_date_range(message, now_dt)
         if out_of_range:
             return (
                 f"很抱歉，由於系統尚未更新課表，"
                 f"{out_month}的課程資訊請至官網查詢喔！\n"
+                f"官網：https://www.zoo.gov.taipei"
+            ), "low_interest"
+
+        # 檢查二：純星期查詢（週六/週日…），但現在已不在課表月份
+        # → 使用者問的「週六」實際上是指當前月份的週六，課表已過期
+        if now_dt.year != _COURSE_DATA_YEAR or now_dt.month != _COURSE_DATA_MONTH:
+            return (
+                f"很抱歉，由於系統尚未更新課表，"
+                f"{now_dt.month}月的課程資訊請至官網查詢喔！\n"
                 f"官網：https://www.zoo.gov.taipei"
             ), "low_interest"
 
