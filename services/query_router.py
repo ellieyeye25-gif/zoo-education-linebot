@@ -243,9 +243,8 @@ _MAIN_TICKET_TYPES = ["普通票", "臺北市民票", "優待票", "團體票"]
 def _query_tickets(message, tickets_path):
     """
     從 visitor_tickets.csv 查詢票價。
-    - 問教育中心 → 只回教育中心票價
-    - 問遊客列車 → 只回遊客列車票價
-    - 一般票價查詢 → 回傳入園門票四種主要票種 + 官網連結
+    優先順序：教育中心 > 遊客列車 > 特定票種 > 一般摘要
+    一般摘要：每種票型只顯示一次（去重），附官網連結。
     """
     rows = _read_csv(tickets_path)
 
@@ -262,9 +261,12 @@ def _query_tickets(message, tickets_path):
     if "教育中心" in message:
         filtered = [r for r in rows if r["venue"] == "教育中心"
                     and r["ticket_type"] in ("普通票", "優待票")]
+        seen = set()
         lines = ["教育中心："]
         for row in filtered:
-            lines.append(f"{row['ticket_type']} {row['_price']}元")
+            if row["ticket_type"] not in seen:
+                seen.add(row["ticket_type"])
+                lines.append(f"{row['ticket_type']} {row['_price']}元")
         return "\n".join(lines)
 
     # ── 遊客列車專門查詢 ──────────────────────────────────────────
@@ -276,19 +278,54 @@ def _query_tickets(message, tickets_path):
             lines.append(f"車資 {row['_price']}元")
         return "\n".join(lines)
 
-    # ── 一般票價查詢：只顯示入園門票四種主要票種 ─────────────────
+    # ── 特定票種查詢（偵測訊息中提及的票種） ──────────────────────
+    _SPECIFIC_KEYWORDS = [
+        (["臺北市民", "市民票", "市民門票"],   "臺北市民票"),
+        (["優待票", "學生票", "兒童票", "優待"], "優待票"),
+        (["普通票"],                            "普通票"),
+        (["團體票", "團體"],                    "團體票"),
+        (["免票", "免費入場", "哪些人免費"],    "免票"),
+    ]
+    for keywords, ticket_type in _SPECIFIC_KEYWORDS:
+        if any(kw in message for kw in keywords):
+            filtered = [r for r in rows
+                        if r["venue"] == "入園" and r["ticket_type"] == ticket_type]
+            if not filtered:
+                break
+            price = filtered[0]["_price"]
+            price_str = "免費" if price == 0 else f"{price}元"
+
+            if ticket_type == "免票":
+                lines = ["免票（入園門票）適用對象："]
+                for row in filtered:
+                    lines.append(f"- {row['eligible_group']}")
+            elif len(filtered) > 1:
+                # 同票種有多種適用對象（如優待票）
+                lines = [f"{ticket_type}：{price_str}", "適用對象："]
+                for row in filtered:
+                    lines.append(f"- {row['eligible_group']}")
+            else:
+                lines = [f"{ticket_type}：{price_str}",
+                         f"適用：{filtered[0]['eligible_group']}"]
+
+            lines += ["", "詳細資格請至官網查詢：", _TICKET_URL]
+            return "\n".join(lines)
+
+    # ── 一般票價查詢：每種票型去重，各顯示一次 ──────────────────
     main_rows = [r for r in rows
                  if r["venue"] == "入園" and r["ticket_type"] in _MAIN_TICKET_TYPES]
-    # 依 _MAIN_TICKET_TYPES 順序排列
-    main_rows.sort(key=lambda r: _MAIN_TICKET_TYPES.index(r["ticket_type"]))
+    seen: set = set()
+    deduped = []
+    for row in main_rows:
+        if row["ticket_type"] not in seen:
+            seen.add(row["ticket_type"])
+            deduped.append(row)
+    deduped.sort(key=lambda r: _MAIN_TICKET_TYPES.index(r["ticket_type"]))
 
     lines = ["入園門票："]
-    for row in main_rows:
+    for row in deduped:
         lines.append(f"{row['ticket_type']} {row['_price']}元")
-
-    lines.append("")
-    lines.append("免票、優惠票、團體票之資格與規定請至官網查詢：")
-    lines.append(_TICKET_URL)
+    lines += ["", "免票、優惠票、團體票之資格與規定請至官網查詢：", _TICKET_URL]
     return "\n".join(lines)
 
 
