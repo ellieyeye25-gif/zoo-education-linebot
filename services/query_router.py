@@ -234,51 +234,61 @@ _TICKET_FILTER = [
 ]
 
 
+_TICKET_URL = "https://www.zoo.gov.taipei/cp.aspx?n=763493FD7ECCAA11&s=F3BC09EC36168CB6"
+
+# 主要票種顯示順序（入園門票摘要用）
+_MAIN_TICKET_TYPES = ["普通票", "臺北市民票", "優待票", "團體票"]
+
+
 def _query_tickets(message, tickets_path):
     """
-    從 visitor_tickets.csv 依關鍵字精確篩選票價資訊。
-    資料前處理：price 轉數值；age_min/age_max 含缺失值（留空=不限）。
+    從 visitor_tickets.csv 查詢票價。
+    - 問教育中心 → 只回教育中心票價
+    - 問遊客列車 → 只回遊客列車票價
+    - 一般票價查詢 → 回傳入園門票四種主要票種 + 官網連結
     """
     rows = _read_csv(tickets_path)
 
-    # 資料前處理
+    # 資料前處理：price → 整數，缺失年齡欄位保留 None
     for row in rows:
         try:
             row["_price"] = int(row["price"])
         except ValueError:
-            row["_price"] = -1        # 異常值標記
+            row["_price"] = -1    # 異常值標記
         row["_age_min"] = float(row["age_min"]) if row["age_min"] else None
         row["_age_max"] = float(row["age_max"]) if row["age_max"] else None
 
-    # 依關鍵字篩選（允許多組命中取聯集）
-    filtered, matched = [], False
-    for keywords, field, value in _TICKET_FILTER:
-        if any(kw in message for kw in keywords):
-            matched = True
-            for row in rows:
-                if value in row[field] and row not in filtered:
-                    filtered.append(row)
+    # ── 教育中心專門查詢 ──────────────────────────────────────────
+    if "教育中心" in message:
+        filtered = [r for r in rows if r["venue"] == "教育中心"
+                    and r["ticket_type"] in ("普通票", "優待票")]
+        lines = ["教育中心："]
+        for row in filtered:
+            lines.append(f"{row['ticket_type']} {row['_price']}元")
+        return "\n".join(lines)
 
-    if not matched:
-        filtered = rows     # 無特定關鍵字 → 回傳全部票種摘要
+    # ── 遊客列車專門查詢 ──────────────────────────────────────────
+    if any(kw in message for kw in ["遊客列車", "列車", "車資"]):
+        filtered = [r for r in rows if r["venue"] == "遊客列車"
+                    and r["ticket_type"] == "車資"]
+        lines = ["遊客列車："]
+        for row in filtered:
+            lines.append(f"車資 {row['_price']}元")
+        return "\n".join(lines)
 
-    if not filtered:
-        return "查無相關票價資料。"
+    # ── 一般票價查詢：只顯示入園門票四種主要票種 ─────────────────
+    main_rows = [r for r in rows
+                 if r["venue"] == "入園" and r["ticket_type"] in _MAIN_TICKET_TYPES]
+    # 依 _MAIN_TICKET_TYPES 順序排列
+    main_rows.sort(key=lambda r: _MAIN_TICKET_TYPES.index(r["ticket_type"]))
 
-    # 格式化：依 venue 分組輸出
-    groups: dict = {}
-    for row in filtered:
-        groups.setdefault(row["venue"], []).append(row)
+    lines = ["入園門票："]
+    for row in main_rows:
+        lines.append(f"{row['ticket_type']} {row['_price']}元")
 
-    lines = []
-    for venue, vrows in groups.items():
-        lines.append(f"【{venue}】")
-        for row in vrows:
-            price_str = "免費" if row["_price"] == 0 else f"{row['_price']}元"
-            line = f"- {row['ticket_type']}（{row['eligible_group']}）：{price_str}"
-            if row.get("notes"):
-                line += f"　{row['notes']}"
-            lines.append(line)
+    lines.append("")
+    lines.append("免票、優惠票、團體票之資格與規定請至官網查詢：")
+    lines.append(_TICKET_URL)
     return "\n".join(lines)
 
 
