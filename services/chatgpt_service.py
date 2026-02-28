@@ -92,21 +92,29 @@ def load_courses_for_weekday(csv_path, target_weekday):
       summary_text：一行一類別的簡短總覽
       detail_text：已格式化的詳細課程區塊，可直接給 GPT 輸出
     """
+    import logging
     # 分類收集：{cat: [(topic, weekday, time, location, cert, hours), ...]}
     buckets = OrderedDict()
+    row_count = 0
+    match_count = 0
     try:
         with open(csv_path, "r", encoding="utf-8") as f:
             r = csv.DictReader(f)
             for row in r:
+                row_count += 1
                 cat = row.get("category", "").strip()
                 topic = row.get("topic", "").strip()
                 if not cat or not topic or cat.startswith("D_"):
                     continue
-                if not matches_weekday(row.get("weekday", ""), target_weekday):
+                weekday_val = row.get("weekday", "").strip()
+                matched = matches_weekday(weekday_val, target_weekday)
+                if matched:
+                    match_count += 1
+                if not matched:
                     continue
                 entry = (
                     topic,
-                    row.get("weekday", "").strip(),
+                    weekday_val,
                     row.get("time", "").strip(),
                     row.get("location", "").strip(),
                     row.get("cert", "").strip(),
@@ -116,7 +124,10 @@ def load_courses_for_weekday(csv_path, target_weekday):
                     buckets[cat] = []
                 buckets[cat].append(entry)
     except Exception as e:
+        logging.error(f"load_courses_for_weekday 讀檔失敗: {e}")
         return f"(讀取失敗: {e})", ""
+
+    logging.info(f"[filter] target={target_weekday} rows={row_count} matches={match_count} buckets={list(buckets.keys())}")
 
     if not buckets:
         return f"（{target_weekday} 無課程資料）", ""
@@ -294,12 +305,9 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
 詳細：
 {day_detail}
 """
-    elif target_weekday and day_summary and not day_summary.startswith("（"):
-        # 有讀取錯誤，退回讓 GPT 從課程總覽回答
-        day_section = f"\n[備註] 使用者詢問 {target_weekday} 的課程。\n"
-    elif target_weekday and day_summary.startswith("（"):
-        # 確認無課程
-        day_section = f"\n[備註] {day_summary}\n"
+    elif target_weekday:
+        # 預篩選失敗或無課程，仍把目標星期告知 GPT，讓 GPT 從課程詳細資料自行篩選
+        day_section = f"\n[查詢目標] 使用者詢問 {target_weekday} 的課程。\n"
     else:
         day_section = ""
 
@@ -337,9 +345,9 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
    ── B. 有指定日期或星期，且 [已篩選課程] 存在 ──
    先輸出「摘要」的內容，再空一行，輸出「詳細」的內容，原文照輸出，不要修改。
 
-   ── C. 有指定日期或星期，但無 [已篩選課程] ──
-   從 [備註] 取得目標星期，再從 [課程詳細資料] 的時間表欄位中找出符合該星期的課程，
-   依 B 的格式輸出。若真的完全找不到符合的課程，才回應「該日無課程資料」。
+   ── C. 有 [查詢目標] 但無 [已篩選課程] ──
+   從 [查詢目標] 取得目標星期，再從 [課程詳細資料] 的時間表欄位中找出符合該星期的課程，
+   依 B 的格式輸出。若真的完全找不到才回應「該日無課程資料」。
 
    ── D. 使用者詢問特定課程細節 ──
    先輸出當天課程的簡短總覽（一行一類別，類別：主題1、主題2 格式），
