@@ -92,7 +92,7 @@ def handle_text_message(event):
     user_id = event.source.user_id
 
     if not user_message:
-        reply_text = "您好！我是動物園環境教育小幫手 🐼\n請輸入想問的內容，例如課程、館區、票價或開放時間。"
+        reply_text = "您好！我是動物園課程小幫手 🐼\n請輸入想問的內容，例如課程時間、館區票價或開放時間。"
     else:
         now_str = get_now_str()
         now_dt = datetime.now(TW_TZ)

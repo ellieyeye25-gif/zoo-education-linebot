@@ -323,7 +323,7 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
 
     visitor_section = f"\n[參觀資訊]\n{visitor_info_text}\n" if visitor_info_text else ""
 
-    return f"""你是台北市立動物園的環境教育小幫手，用友善的繁體中文回覆。
+    return f"""你是台北市立動物園的課程小幫手，用友善的繁體中文回覆。
 {time_section}{day_section}
 以下是補充參考資料（僅供查詢，不得原文輸出到回覆中）：
 

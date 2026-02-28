@@ -40,6 +40,43 @@ def _read_csv(path):
     return rows
 
 
+# ── 課表資料有效範圍 ─────────────────────────────────────────────
+_COURSE_DATA_YEAR  = 2026
+_COURSE_DATA_MONTH = 2   # 目前只有二月課表
+
+_RELATIVE_OFFSETS = {
+    "今天": 0, "今日": 0,
+    "昨天": -1, "昨日": -1,
+    "明天": 1,  "明日": 1,
+    "後天": 2,  "前天": -2,
+}
+
+
+def _check_course_date_range(message, now_dt):
+    """
+    判斷訊息是否包含「超出課表範圍」的特定日期。
+    - 相對日期（今天/明天/昨天…）→ 計算實際日期後比對
+    - 明確日期（3/8、3月8日）→ 直接比對月份
+    - 純星期查詢（週六/週日）→ 不視為特定日期，不觸發
+    回傳 (True, '3月') 或 (False, None)
+    """
+    for kw, offset in _RELATIVE_OFFSETS.items():
+        if kw in message:
+            target = now_dt + timedelta(days=offset)
+            if target.year != _COURSE_DATA_YEAR or target.month != _COURSE_DATA_MONTH:
+                return True, f"{target.month}月"
+            return False, None
+
+    m = re.search(r'(\d{1,2})[月/](\d{1,2})[日號]?', message)
+    if m:
+        month = int(m.group(1))
+        if month != _COURSE_DATA_MONTH:
+            return True, f"{month}月"
+        return False, None
+
+    return False, None
+
+
 # ── 連假順延休館日 (月, 日): [館名, ...] ─────────────────────────
 _HOLIDAY_CLOSURES = {
     (4,  7): ["教育中心", "大貓熊館"],
@@ -453,6 +490,15 @@ def route_message(message, config, now_str="", now_dt=None):
     # ── 3. 課程日期查詢（Python 直接篩選回應） ────────────────────
     target_weekday = detect_query_weekday(message, now_dt)
     if target_weekday:
+        # 先確認查詢日期是否在課表有效範圍內
+        out_of_range, out_month = _check_course_date_range(message, now_dt)
+        if out_of_range:
+            return (
+                f"很抱歉，由於系統尚未更新課表，"
+                f"{out_month}的課程資訊請至官網查詢喔！\n"
+                f"官網：https://www.zoo.gov.taipei"
+            ), "low_interest"
+
         day_summary, day_detail = load_courses_for_weekday(courses_path, target_weekday)
         if day_detail and not day_detail.startswith("（"):
             reply = f"以下是{target_weekday}的課程：\n\n{day_summary}\n\n{day_detail}"
