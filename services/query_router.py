@@ -5,6 +5,11 @@
 - 結構化查詢（票價/開放時間/公休/交通/遊園須知/附近館區）→ Python 直接回應
 - 課程日期查詢 → Python 篩選課程後直接回應
 - 語意/開放式查詢 → chatgpt_service（含興趣度偵測）
+
+資料來源（CSV）：
+  data/visitor_tickets.csv  — 票價與適用資格
+  data/visitor_hours.csv    — 開放時間
+  data/venue_closures.csv   — 館區公休排程
 """
 
 import os
@@ -22,21 +27,20 @@ def _path(name):
     return os.path.join(PROJECT_ROOT, name)
 
 
-# ── 館區公休排程（供 Python 直接計算） ───────────────────────────
-# ("monthly", N) = 每月第 N 個週一公休；("weekly", 0) = 每週一公休
-_CLOSURE_SCHEDULE = {
-    "大貓熊館":             ("monthly", 1),
-    "新光特展館（大貓熊館）":  ("monthly", 1),
-    "熱帶雨林室內館（穿山甲館）": ("monthly", 2),
-    "穿山甲館":             ("monthly", 2),
-    "企鵝館":               ("monthly", 2),
-    "兩棲爬蟲動物館":        ("monthly", 3),
-    "昆蟲館":               ("monthly", 4),
-    "酷Cool節能屋":          ("weekly",  0),
-    "教育中心":              ("weekly",  0),
-}
+def _read_csv(path):
+    """讀取 CSV 回傳 list[dict]，缺失欄位填空字串（缺失值處理）。"""
+    rows = []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                # 缺失值：將 None 統一轉為空字串
+                rows.append({k: (v if v is not None else "") for k, v in row.items()})
+    except Exception as e:
+        logging.error(f"_read_csv({path}) 失敗: {e}")
+    return rows
 
-# 連假順延休館日 (月, 日): [館名, ...]
+
+# ── 連假順延休館日 (月, 日): [館名, ...] ─────────────────────────
 _HOLIDAY_CLOSURES = {
     (4,  7): ["教育中心", "大貓熊館"],
     (9, 29): ["教育中心", "昆蟲館"],
@@ -172,8 +176,193 @@ def _nearby_text(current_area, all_areas, top_n=6):
     return "\n".join(lines)
 
 
+# ── CSV 票價查詢 ─────────────────────────────────────────────────
+
+# 關鍵字 → (搜尋欄位, 比對字串)，依序嘗試，命中即篩選
+_TICKET_FILTER = [
+    (["學生", "學生票"],                   "eligible_group", "學生"),
+    (["6-11", "兒童票", "小孩票"],         "eligible_group", "6-11歲兒童"),
+    (["老人", "長者", "65歲", "老年"],     "eligible_group", "65歲"),
+    (["原住民"],                           "eligible_group", "原住民"),
+    (["市民", "臺北市民"],                 "eligible_group", "市民"),
+    (["身心障礙", "殘障", "障礙"],         "eligible_group", "身心障礙"),
+    (["志工"],                             "eligible_group", "志工"),
+    (["低收入"],                           "eligible_group", "低收入"),
+    (["數位學生證"],                       "eligible_group", "數位學生證"),
+    (["免費", "免票"],                     "ticket_type",    "免票"),
+    (["優待"],                             "ticket_type",    "優待票"),
+    (["團體"],                             "ticket_type",    "團體票"),
+    (["教育中心"],                         "venue",          "教育中心"),
+    (["遊客列車", "列車", "車資"],         "venue",          "遊客列車"),
+]
+
+
+def _query_tickets(message, tickets_path):
+    """
+    從 visitor_tickets.csv 依關鍵字精確篩選票價資訊。
+    資料前處理：price 轉數值；age_min/age_max 含缺失值（留空=不限）。
+    """
+    rows = _read_csv(tickets_path)
+
+    # 資料前處理
+    for row in rows:
+        try:
+            row["_price"] = int(row["price"])
+        except ValueError:
+            row["_price"] = -1        # 異常值標記
+        row["_age_min"] = float(row["age_min"]) if row["age_min"] else None
+        row["_age_max"] = float(row["age_max"]) if row["age_max"] else None
+
+    # 依關鍵字篩選（允許多組命中取聯集）
+    filtered, matched = [], False
+    for keywords, field, value in _TICKET_FILTER:
+        if any(kw in message for kw in keywords):
+            matched = True
+            for row in rows:
+                if value in row[field] and row not in filtered:
+                    filtered.append(row)
+
+    if not matched:
+        filtered = rows     # 無特定關鍵字 → 回傳全部票種摘要
+
+    if not filtered:
+        return "查無相關票價資料。"
+
+    # 格式化：依 venue 分組輸出
+    groups: dict = {}
+    for row in filtered:
+        groups.setdefault(row["venue"], []).append(row)
+
+    lines = []
+    for venue, vrows in groups.items():
+        lines.append(f"【{venue}】")
+        for row in vrows:
+            price_str = "免費" if row["_price"] == 0 else f"{row['_price']}元"
+            line = f"- {row['ticket_type']}（{row['eligible_group']}）：{price_str}"
+            if row.get("notes"):
+                line += f"　{row['notes']}"
+            lines.append(line)
+    return "\n".join(lines)
+
+
+# ── CSV 開放時間查詢 ──────────────────────────────────────────────
+
+def _query_hours(message, hours_path):
+    """從 visitor_hours.csv 精確查詢開放時間。"""
+    rows = _read_csv(hours_path)
+
+    venue_keywords = {
+        "遊客列車": "遊客列車",
+        "列車":     "遊客列車",
+        "酷cool":   "酷Cool節能屋",
+        "節能屋":   "酷Cool節能屋",
+        "動物展示": "動物展示",
+    }
+    target = None
+    for kw, venue in venue_keywords.items():
+        if kw.lower() in message.lower():
+            target = venue
+            break
+
+    filtered = [r for r in rows if target in r["venue"]] if target \
+        else [r for r in rows if r["venue"] in ("動物園", "動物展示")]
+
+    if not filtered:
+        filtered = rows
+
+    lines = []
+    for row in filtered:
+        line = f"【{row['venue']}】{row['open_time']} - {row['close_time']}"
+        if row.get("last_entry"):
+            line += f"（停止入園 {row['last_entry']}）"
+        if row.get("notes"):
+            line += f"\n  備註：{row['notes']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+# ── CSV 館區公休查詢 ──────────────────────────────────────────────
+
+_CLOSURE_ALIASES = {
+    "穿山甲館":  "熱帶雨林室內館（穿山甲館）",
+    "大貓熊館":  "大貓熊館",
+    "新光特展館": "大貓熊館",
+}
+
+
+def _calc_closed(row, date):
+    """依 venue_closures.csv 一筆資料計算 date 是否公休。"""
+    if (date.month, date.day) in _HOLIDAY_CLOSURES:
+        if row["venue_name"] in _HOLIDAY_CLOSURES[(date.month, date.day)]:
+            return True
+    day_map = {"週一": 0, "週二": 1, "週三": 2, "週四": 3,
+               "週五": 4, "週六": 5, "週日": 6}
+    closure_day = day_map.get(row.get("day_of_week", ""), -1)
+    wd = date.weekday()
+    if row["closure_type"] == "weekly":
+        return wd == closure_day
+    if row["closure_type"] == "monthly" and wd == closure_day:
+        try:
+            return (date.day - 1) // 7 + 1 == int(row["week_number"])
+        except (ValueError, TypeError):
+            pass
+    return False
+
+
+def _query_closure(message, closures_path, now_dt):
+    """
+    從 venue_closures.csv 查詢館區公休。
+    含特定館名 → 即時計算今天是否公休；否則 → 回傳完整公休表。
+    """
+    rows = _read_csv(closures_path)
+    weekday_names = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+    today_str = f"{now_dt.month}月{now_dt.day}日（{weekday_names[now_dt.weekday()]}）"
+
+    # 偵測訊息中的館名（含別名正規化）
+    target_venue = None
+    for alias, canonical in _CLOSURE_ALIASES.items():
+        if alias in message:
+            target_venue = canonical
+            break
+    if not target_venue:
+        for row in rows:
+            if row["venue_name"] in message:
+                target_venue = row["venue_name"]
+                break
+
+    if target_venue:
+        target_rows = [r for r in rows if r["venue_name"] == target_venue]
+        if not target_rows:
+            return f"「{target_venue}」無固定公休日，全年正常開放。"
+        row = target_rows[0]
+        closed = _calc_closed(row, now_dt)
+        special = f"（開放時間 {row['special_hours']}）" if row.get("special_hours") else ""
+        week = f"第{row['week_number']}個" if row.get("week_number") else "每"
+        status = "今日公休，建議改天再來。" if closed else "今日正常開放！"
+        return (f"「{target_venue}」{status}{special}\n"
+                f"公休規則：每月{week}{row['day_of_week']}公休"
+                if row["closure_type"] == "monthly"
+                else f"「{target_venue}」{status}{special}\n"
+                     f"公休規則：每{row['day_of_week']}公休")
+
+    # 無特定館名 → 完整公休表
+    lines = [f"【館區公休時間表】（今天：{today_str}）"]
+    for row in rows:
+        closed = _calc_closed(row, now_dt)
+        status = "今日公休" if closed else "今日開放"
+        special = f"　開放時間 {row['special_hours']}" if row.get("special_hours") else ""
+        week = f"第{row['week_number']}個" if row.get("week_number") else "每"
+        rule = (f"每月{week}{row['day_of_week']}公休"
+                if row["closure_type"] == "monthly"
+                else f"每{row['day_of_week']}公休")
+        lines.append(f"- {row['venue_name']}：{rule}{special}（{status}）")
+    return "\n".join(lines)
+
+
+# ── visitor_info.txt 章節讀取（交通/遊園須知/建議行程） ──────────
+
 def _load_section(file_path, section_marker):
-    """從 txt 檔讀取特定 === 章節 === 的內容（不含標題行）。"""
+    """讀取 visitor_info.txt 特定章節（不含標題行）。"""
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -182,77 +371,32 @@ def _load_section(file_path, section_marker):
             return "(找不到相關資訊)"
         next_sec = content.find("\n=== ", start + len(section_marker))
         block = content[start:next_sec].strip() if next_sec != -1 else content[start:].strip()
-        lines = block.split("\n")
-        return "\n".join(lines[1:]).strip()
+        return "\n".join(block.split("\n")[1:]).strip()
     except Exception as e:
         return f"(讀取失敗: {e})"
 
 
-def _is_area_closed(area_name, date):
-    """
-    判斷指定館區在 date 當天是否公休。
-    回傳 True / False / None（不在排程表中）。
-    """
-    # 連假順延
-    key = (date.month, date.day)
-    if key in _HOLIDAY_CLOSURES:
-        if area_name in _HOLIDAY_CLOSURES[key]:
-            return True
-
-    sched = _CLOSURE_SCHEDULE.get(area_name)
-    if sched is None:
-        return None
-    stype, ref = sched
-    wd = date.weekday()  # 0=週一
-    if stype == "weekly":
-        return wd == ref
-    if stype == "monthly" and wd == 0:
-        week_num = (date.day - 1) // 7 + 1
-        return week_num == ref
-    return False
-
-
-# ── 處理各類查詢 ─────────────────────────────────────────────────
-
-def _handle_closure_query(message, visitor_info_path, now_dt):
-    """處理館區公休查詢，若訊息包含特定館名則即時計算，否則回傳完整公休表。"""
-    areas_path = _path("data/zoo_areas.csv")
-    areas = _load_areas(areas_path)
-    area = _extract_area_from_message(message, areas)
-
-    if area:
-        name = area["name"]
-        closed = _is_area_closed(name, now_dt)
-        weekday_names = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
-        today_str = f"{now_dt.month}月{now_dt.day}日（{weekday_names[now_dt.weekday()]}）"
-        if closed is True:
-            return f"「{name}」今天（{today_str}）公休，建議明天或其他日子再來參觀。\n\n" \
-                   + _load_section(visitor_info_path, "=== 館區公休 ===")
-        elif closed is False:
-            return f"「{name}」今天（{today_str}）正常開放！\n\n" \
-                   + _load_section(visitor_info_path, "=== 館區公休 ===")
-        else:
-            return f"「{name}」無固定公休日，全年正常開放。\n\n" \
-                   + _load_section(visitor_info_path, "=== 館區公休 ===")
-
-    return _load_section(visitor_info_path, "=== 館區公休 ===")
-
+# ── 處理各類查詢（統一入口） ─────────────────────────────────────
 
 def _handle_visitor_query(query_type, visitor_info_path, message, now_dt):
-    """依查詢類型回傳參觀資訊文字。"""
-    section_map = {
-        "ticket":    ["=== 參觀票價 ===", "=== 票種說明 ==="],
-        "hours":     ["=== 開放時間 ===", "=== 遊客列車時刻 ==="],
-        "transport": ["=== 交通及停車 ==="],
-        "rules":     ["=== 遊園須知 ==="],
-        "itinerary": ["=== 建議行程 ==="],
-    }
-    if query_type == "closure":
-        return _handle_closure_query(message, visitor_info_path, now_dt)
+    """依查詢類型呼叫對應的 CSV 或 txt 查詢函式。"""
+    tickets_path  = _path("data/visitor_tickets.csv")
+    hours_path    = _path("data/visitor_hours.csv")
+    closures_path = _path("data/venue_closures.csv")
 
-    sections = section_map.get(query_type, [])
-    parts = [_load_section(visitor_info_path, s) for s in sections]
-    return "\n\n".join(p for p in parts if p and not p.startswith("("))
+    if query_type == "ticket":
+        return _query_tickets(message, tickets_path)
+    if query_type == "hours":
+        return _query_hours(message, hours_path)
+    if query_type == "closure":
+        return _query_closure(message, closures_path, now_dt)
+    if query_type == "transport":
+        return _load_section(visitor_info_path, "=== 交通及停車 ===")
+    if query_type == "rules":
+        return _load_section(visitor_info_path, "=== 遊園須知 ===")
+    if query_type == "itinerary":
+        return _load_section(visitor_info_path, "=== 建議行程 ===")
+    return "(查詢類型不明)"
 
 
 # ── 主路由函式 ───────────────────────────────────────────────────
