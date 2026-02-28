@@ -338,7 +338,8 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
    先輸出「摘要」的內容，再空一行，輸出「詳細」的內容，原文照輸出，不要修改。
 
    ── C. 有指定日期或星期，但無 [已篩選課程] ──
-   告知使用者查無該日的課程資料。
+   從 [備註] 取得目標星期，再從 [課程詳細資料] 的時間表欄位中找出符合該星期的課程，
+   依 B 的格式輸出。若真的完全找不到符合的課程，才回應「該日無課程資料」。
 
    ── D. 使用者詢問特定課程細節 ──
    先輸出當天課程的簡短總覽（一行一類別，類別：主題1、主題2 格式），
@@ -420,8 +421,9 @@ def get_reply_and_interest(user_message, config, now_str=""):
             day_summary, day_detail = ("", "")
     logging.info(f"[weekday] target={target_weekday} | summary_len={len(day_summary)} | detail_len={len(day_detail)}")
 
+    courses_text = load_courses_context(courses_path)
     system_prompt = build_system_prompt(
-        courses_overview, "", areas_text, env_notes_text,
+        courses_overview, courses_text, areas_text, env_notes_text,
         now_str, day_summary, day_detail, target_weekday
     )
     model = getattr(config, "OPENAI_MODEL", "gpt-3.5-turbo")
