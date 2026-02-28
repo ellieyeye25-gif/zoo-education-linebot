@@ -14,7 +14,7 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from dotenv import load_dotenv
 
 from config.settings import config
-from services.chatgpt_service import get_reply_and_interest
+from services.query_router import route_message
 
 # 載入環境變數
 load_dotenv()
@@ -92,11 +92,12 @@ def handle_text_message(event):
     user_id = event.source.user_id
 
     if not user_message:
-        reply_text = "您好！我是動物園環境教育小幫手 🐼\n請輸入想問的內容，例如課程、館區或環境教育時數。"
+        reply_text = "您好！我是動物園環境教育小幫手 🐼\n請輸入想問的內容，例如課程、館區、票價或開放時間。"
     else:
         now_str = get_now_str()
+        now_dt = datetime.now(TW_TZ)
         app.logger.info(f"收到訊息 from {user_id}: {user_message}（{now_str}）")
-        reply_text, interest = get_reply_and_interest(user_message, config, now_str)
+        reply_text, interest = route_message(user_message, config, now_str, now_dt)
         if interest:
             app.logger.info(f"興趣度: {interest}")
 

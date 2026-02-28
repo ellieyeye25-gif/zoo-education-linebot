@@ -288,8 +288,18 @@ def load_env_edu_notes(txt_path):
         return f"(讀取環教說明失敗: {e})"
 
 
+def load_visitor_info(txt_path):
+    """讀取參觀資訊（票價、開放時間、交通、遊園須知、建議行程等）。"""
+    try:
+        with open(txt_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception as e:
+        return f"(讀取參觀資訊失敗: {e})"
+
+
 def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_text,
-                        now_str="", day_summary="", day_detail="", target_weekday=""):
+                        now_str="", day_summary="", day_detail="", target_weekday="",
+                        visitor_info_text=""):
     """組裝給 ChatGPT 的 system prompt。"""
     time_section = f"\n[現在時間]\n{now_str}\n" if now_str else ""
 
@@ -311,6 +321,8 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
     else:
         day_section = ""
 
+    visitor_section = f"\n[參觀資訊]\n{visitor_info_text}\n" if visitor_info_text else ""
+
     return f"""你是台北市立動物園的環境教育小幫手，用友善的繁體中文回覆。
 {time_section}{day_section}
 以下是補充參考資料（僅供查詢，不得原文輸出到回覆中）：
@@ -323,6 +335,7 @@ def build_system_prompt(courses_overview, courses_text, areas_text, env_notes_te
 
 [環境教育說明]
 {env_notes_text}
+{visitor_section}
 
 ---
 回覆規則（務必嚴格遵守）：
@@ -411,10 +424,12 @@ def get_reply_and_interest(user_message, config, now_str=""):
     courses_path = _path(getattr(config, "COURSES_CSV_PATH", "data/courses-February.csv"))
     areas_path = _path(getattr(config, "ZOO_AREAS_CSV_PATH", "data/zoo_areas.csv"))
     notes_path = _path(getattr(config, "ENV_EDU_NOTES_PATH", "data/環教時數說明.txt"))
+    visitor_path = _path("data/visitor_info.txt")
 
     courses_overview = load_courses_overview(courses_path)
     areas_text = load_zoo_areas_context(areas_path)
     env_notes_text = load_env_edu_notes(notes_path)
+    visitor_info_text = load_visitor_info(visitor_path)
 
     # Python 預先偵測目標星期並篩選課程，避免讓 GPT 自行過濾
     import logging
@@ -432,7 +447,8 @@ def get_reply_and_interest(user_message, config, now_str=""):
     courses_text = load_courses_context(courses_path)
     system_prompt = build_system_prompt(
         courses_overview, courses_text, areas_text, env_notes_text,
-        now_str, day_summary, day_detail, target_weekday
+        now_str, day_summary, day_detail, target_weekday,
+        visitor_info_text,
     )
     model = getattr(config, "OPENAI_MODEL", "gpt-3.5-turbo")
     max_tokens = getattr(config, "GPT_MAX_TOKENS", 1200)
