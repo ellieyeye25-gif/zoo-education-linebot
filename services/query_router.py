@@ -530,9 +530,14 @@ def route_message(message, config, now_str="", now_dt=None):
     # ── 2. 參觀資訊查詢 ───────────────────────────────────────────
     query_type = _classify_visitor_query(message)
     if query_type:
+        # 行程查詢：交 GPT 篩選相關部分，避免整段文字傾倒
+        if query_type == "itinerary":
+            itinerary = _load_section(visitor_info_path, "=== 建議行程 ===")
+            augmented_msg = f"{message}\n\n[建議行程資料]\n{itinerary}"
+            reply, interest = get_reply_and_interest(augmented_msg, config, now_str)
+            return reply, "maybe_interest"
         reply = _handle_visitor_query(query_type, visitor_info_path, message, now_dt)
-        interest = "maybe_interest" if query_type == "itinerary" else "low_interest"
-        return reply, interest
+        return reply, "low_interest"
 
     # ── 3. 課程日期查詢（Python 直接篩選回應） ────────────────────
     target_weekday = detect_query_weekday(message, now_dt)
@@ -546,9 +551,14 @@ def route_message(message, config, now_str="", now_dt=None):
                 f"官網：https://www.zoo.gov.taipei"
             ), "low_interest"
 
-        # 檢查二：純星期查詢（週六/週日…），但現在已不在課表月份
-        # → 使用者問的「週六」實際上是指當前月份的週六，課表已過期
-        if now_dt.year != _COURSE_DATA_YEAR or now_dt.month != _COURSE_DATA_MONTH:
+        # 檢查二：純星期查詢（週X），但現在已不在課表月份
+        # 若訊息含明確的課表月份日期（如 2/28、2月27日），跳過此檢查
+        has_explicit_course_date = bool(
+            re.search(rf'{_COURSE_DATA_MONTH}[月/]\d{{1,2}}', message)
+        )
+        if not has_explicit_course_date and (
+            now_dt.year != _COURSE_DATA_YEAR or now_dt.month != _COURSE_DATA_MONTH
+        ):
             return (
                 f"很抱歉，由於系統尚未更新課表，"
                 f"{now_dt.month}月的課程資訊請至官網查詢喔！\n"
